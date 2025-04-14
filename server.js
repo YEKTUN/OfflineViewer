@@ -27,7 +27,7 @@ app.post('/screenshots', async (req, res) => {
 
     const browser = await puppeteer.launch({
       headless: true,
-      executablePath: '/usr/bin/chromium',
+      // executablePath: '/usr/bin/chromium',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
