@@ -111,8 +111,8 @@ app.post("/screenshots", async (req, res) => {
       await page.screenshot({
         path: path.join(dirPath, "home.jpg"), // dosya adını değiştir
         fullPage: false,
-        type: "jpeg", // jpeg formatı
-        quality: 80, // kalite: 0-100 (isteğe göre)
+        type: "png", // jpeg formatı
+       
       });
       gotShot = true;
     }
@@ -157,8 +157,8 @@ app.post("/screenshots", async (req, res) => {
           await sub.screenshot({
             path: path.join(dirPath, filename),
             fullPage: false,
-            type: "jpeg",
-            quality: 80,
+            type: "png",
+           
           });
 
           await sub.close();
