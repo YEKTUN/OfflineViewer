@@ -121,29 +121,30 @@ app.post('/screenshots', async (req, res) => {
 
     if (links[0]) {
       // Ana sayfa ile aynıysa ikinci kez çekme
-      const firstLink = links[0].replace(/\/$/, '');
-      const homeUrl   = page.url().replace(/\/$/, '');
+      const homeUrl = page.url().replace(/\/$/, '');
+      const firstDifferentLink = links.find(l => l.replace(/\/$/, '') !== homeUrl);
     
-      if (firstLink !== homeUrl) {
+      if (firstDifferentLink) {
         try {
           const sub = await browser.newPage();
           await sub.setViewport({ width: 1366, height: 768 });
           await sub.setUserAgent(await page.browser().userAgent());
-          await sub.goto(firstLink, { waitUntil: 'networkidle2', timeout: 15000 });
-    
-          const filename = firstLink
+          await sub.goto(firstDifferentLink, { waitUntil: 'networkidle2', timeout: 15000 });
+      
+          const filename = firstDifferentLink
             .replace(new URL(url).origin, '')
             .replace(/[\\/:"*?<>|]+/g, '_') || 'index';
-    
+      
           await sub.screenshot({ path: path.join(dirPath, `${filename}.png`), fullPage: false });
           await sub.close();
           gotShot = true;
         } catch {
-          warnings.push(`Alt sayfa alınamadı: ${firstLink}`);
+          warnings.push(`Alt sayfa alınamadı: ${firstDifferentLink}`);
         }
       } else {
-        warnings.push('Alt link ana sayfa ile aynı, tekrar çekilmedi.');
+        warnings.push('Farklı bir alt link bulunamadı.');
       }
+      
     }
 
     await page.close();
