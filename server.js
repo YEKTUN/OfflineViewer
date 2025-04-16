@@ -120,21 +120,29 @@ app.post('/screenshots', async (req, res) => {
     }
 
     if (links[0]) {
-      try {
-        const sub = await browser.newPage();
-        await sub.setViewport({ width: 1366, height: 768 });
-        await sub.setUserAgent(await page.browser().userAgent());
-        await sub.goto(links[0], { waitUntil: 'networkidle2', timeout: 15000 });
-
-        const filename = links[0]
-          .replace(new URL(url).origin, '')
-          .replace(/[\\/:"*?<>|]+/g, '_') || 'index';
-
-        await sub.screenshot({ path: path.join(dirPath, `${filename}.png`), fullPage: false });
-        await sub.close();
-        gotShot = true;
-      } catch {
-        warnings.push(`Alt sayfa alınamadı: ${links[0]}`);
+      // Ana sayfa ile aynıysa ikinci kez çekme
+      const firstLink = links[0].replace(/\/$/, '');
+      const homeUrl   = page.url().replace(/\/$/, '');
+    
+      if (firstLink !== homeUrl) {
+        try {
+          const sub = await browser.newPage();
+          await sub.setViewport({ width: 1366, height: 768 });
+          await sub.setUserAgent(await page.browser().userAgent());
+          await sub.goto(firstLink, { waitUntil: 'networkidle2', timeout: 15000 });
+    
+          const filename = firstLink
+            .replace(new URL(url).origin, '')
+            .replace(/[\\/:"*?<>|]+/g, '_') || 'index';
+    
+          await sub.screenshot({ path: path.join(dirPath, `${filename}.png`), fullPage: false });
+          await sub.close();
+          gotShot = true;
+        } catch {
+          warnings.push(`Alt sayfa alınamadı: ${firstLink}`);
+        }
+      } else {
+        warnings.push('Alt link ana sayfa ile aynı, tekrar çekilmedi.');
       }
     }
 
