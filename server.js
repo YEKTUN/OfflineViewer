@@ -109,7 +109,7 @@ app.post("/screenshots", async (req, res) => {
 
     if (page.url().startsWith("http")) {
       await page.screenshot({
-        path: path.join(dirPath, "home.jpg"), // dosya adını değiştir
+        path: path.join(dirPath, "home.png"), // dosya adını değiştir
         fullPage: false,
         type: "png", // jpeg formatı
        
@@ -121,51 +121,37 @@ app.post("/screenshots", async (req, res) => {
     let links = [];
     try {
       const origin = new URL(url).origin;
-      links = await page.$$eval(
-        "a[href]",
-        (els, origin) =>
-          els.map((e) => e.href).filter((h) => h.startsWith(origin)),
+      links = await page.$$eval("a[href]", (els, origin) =>
+        els.map(e => e.href)
+          .filter(h => h.startsWith(origin) && !h.includes('#') && !h.includes('javascript')),
         origin
       );
-      console.log("🔗 Internal linkler:", links);
     } catch {
-      warnings.push("Linkler alınamadı (frame detach)");
+      warnings.push("Linkler alınamadı.");
     }
 
-    if (links[0]) {
-      // Ana sayfa ile aynıysa ikinci kez çekme
-      const normalize = (u) => u.replace(/\/$/, "").toLowerCase();
-      const homeUrl = normalize(page.url());
+    const normalize = u => u.replace(/\/$/, "").toLowerCase();
+    const homeUrl = normalize(page.url());
+    const uniqueLinks = [...new Set(links.map(normalize))]
+                          .filter(link => link !== homeUrl)
+                          .slice(0, 4);
 
-      const filtered = [...new Set(links.map(normalize))].filter(
-        (link) => link !== homeUrl
-      );
+    for (const [i, link] of uniqueLinks.entries()) {
+      try {
+        const subPage = await browser.newPage();
+        await subPage.setViewport({ width: 1366, height: 768 });
+        await subPage.goto(link, { waitUntil: "networkidle2", timeout: 15000 });
 
-      // Sadece ilk 4 farklı link
-      const topLinks = filtered.slice(0, 4);
+        await subPage.screenshot({
+          path: path.join(dirPath, `page_${i+1}.png`),
+          type: "png",
+          fullPage: false,
+        });
 
-      for (const [index, link] of topLinks.entries()) {
-        try {
-          const sub = await browser.newPage();
-          await sub.setViewport({ width: 1366, height: 768 });
-          await sub.setUserAgent(await page.browser().userAgent());
-          await sub.goto(link, { waitUntil: "networkidle2", timeout: 15000 });
-          await sub.waitForTimeout(2000); // sayfa yüklenmesini beklemek için
-
-          const filename = `subpage_${index + 1}.jpg`;
-
-          await sub.screenshot({
-            path: path.join(dirPath, filename),
-            fullPage: false,
-            type: "png",
-           
-          });
-
-          await sub.close();
-          gotShot = true;
-        } catch {
-          warnings.push(`Alt sayfa alınamadı: ${link}`);
-        }
+        await subPage.close();
+        gotShot = true;
+      } catch {
+        warnings.push(`Alt sayfa alınamadı: ${link}`);
       }
     }
 
