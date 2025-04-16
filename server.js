@@ -134,7 +134,7 @@ app.post("/screenshots", async (req, res) => {
     const homeUrl = normalize(page.url());
     const uniqueLinks = [...new Set(links.map(normalize))]
                           .filter(link => link !== homeUrl)
-                          .slice(0, 4);
+                          .slice(0, 1);
 
     for (const [i, link] of uniqueLinks.entries()) {
       try {
