@@ -1,6 +1,6 @@
 // server.js
 const express   = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const fs        = require('fs');
 const path      = require('path');
 const archiver  = require('archiver');
@@ -14,10 +14,13 @@ let   lastZipPath = null;
 const app = express();
 app.use(express.json());
 app.use(cors());
+fs.mkdirSync(path.join(__dirname, 'shots'), { recursive: true });
 
 /* ─────────────── MongoDB ─────────────── */
 mongoose
-  .connect(process.env.MONGODB_URI)
+  .connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 15_000   
+  })
   .then(() => console.log('✅ MongoDB bağlantısı başarılı.'))
   .catch(err => console.error('❌ MongoDB bağlantı hatası:', err));
 
@@ -34,10 +37,12 @@ const launchOpts = {
 if (process.env.CHROMIUM_PATH) launchOpts.executablePath = process.env.CHROMIUM_PATH;
 
 let browserPromise = puppeteer.launch(launchOpts);
-browserPromise.catch(() => {
-  console.warn('🔄 Browser crash, restarting…');
-  browserPromise = puppeteer.launch(launchOpts);
-});
+browserPromise.then(b =>
+    b.on('disconnected', () => {
+      console.warn('🧨 Browser disconnected, relaunching…');
+      browserPromise = puppeteer.launch(launchOpts);
+    })
+);
 
 /* ─────────────── Health check ─────────────── */
 app.get('/', (_, res) => res.send('ok'));
@@ -45,7 +50,12 @@ app.get('/', (_, res) => res.send('ok'));
 /* ─────────────── POST /screenshots ─────────────── */
 app.post('/screenshots', async (req, res) => {
   let { url } = req.body;
-  if (!url) return res.status(400).json({ error: 'URL gerekli.' });
+ 
+  try {
+    url = new URL(url).href.replace(/\/$/, '');
+  } catch {
+    return res.status(400).json({ error: 'Geçersiz URL.' });
+  }
 
   const timestamp = Date.now();
   const dirPath   = path.join(__dirname, 'shots', `site_${timestamp}`);
@@ -54,11 +64,20 @@ app.post('/screenshots', async (req, res) => {
   const warnings = [];
   let   gotShot  = false;
 
+  let browser, page;
   try {
     await UrlModel.create({ url, timestamp });
+    try {
+      browser = await browserPromise;
+      page = await browser.newPage();
+    } catch (err) {
+      console.warn('🧨 Puppeteer çöktü, yeniden başlatılıyor...');
+      browserPromise = puppeteer.launch(launchOpts);
+      browser = await browserPromise;
+      page = await browser.newPage();
+    }
 
-    const browser = await browserPromise;
-    const page    = await browser.newPage();
+
     await page.setViewport({ width: 1366, height: 768 });
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -91,8 +110,10 @@ app.post('/screenshots', async (req, res) => {
     /* ---------- Alt sayfa (ilk link) ---------- */
     let links = [];
     try {
-      links = await page.$$eval('a[href]', els =>
-        els.map(e => e.href).filter(h => h.startsWith(location.origin))
+      const origin = new URL(url).origin;
+      links = await page.$$eval('a[href]', (els, origin) =>
+        els.map(e => e.href).filter(h => h.startsWith(origin)),
+        origin
       );
     } catch {
       warnings.push('Linkler alınamadı (frame detach)');
@@ -130,6 +151,7 @@ app.post('/screenshots', async (req, res) => {
 
     const output  = fs.createWriteStream(zipPath);
     const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', err => { throw err });
 
     archive.pipe(output);
     archive.directory(dirPath, false);
