@@ -103,7 +103,12 @@ app.post('/screenshots', async (req, res) => {
     }
 
     if (page.url().startsWith('http')) {
-      await page.screenshot({ path: path.join(dirPath, 'home.png'), fullPage: false });
+      await page.screenshot({
+        path: path.join(dirPath, 'home.jpg'),   // dosya adını değiştir
+        fullPage: false,
+        type: 'jpeg',                           // jpeg formatı
+        quality: 80                             // kalite: 0-100 (isteğe göre)
+      });
       gotShot = true;
     }
 
@@ -111,18 +116,18 @@ app.post('/screenshots', async (req, res) => {
     let links = [];
     try {
       const origin = new URL(url).origin;
+      const normalize = u => u.replace(/\/$/, '').toLowerCase();
+    
       links = await page.$$eval('a[href]', (els, origin) =>
-        els.map(e => e.href).filter(h => h.startsWith(origin)),
-        origin
+        els
+          .map(e => e.href.split('#')[0])                     // #anchor'ı sil
+          .filter(h => h.startsWith(origin))                  // site içi olsun
+          .filter(h => h && !h.startsWith('javascript:'))     // boş & js linkler olmasın
       );
-    } catch {
-      warnings.push('Linkler alınamadı (frame detach)');
-    }
-
-    if (links[0]) {
-      // Ana sayfa ile aynıysa ikinci kez çekme
-      const homeUrl = page.url().replace(/\/$/, '');
-      const firstDifferentLink = links.find(l => l.replace(/\/$/, '') !== homeUrl);
+    
+      const uniqueLinks = [...new Set(links.map(normalize))]; // tekrarları kaldır
+      const homeUrl = normalize(page.url());
+      const firstDifferentLink = uniqueLinks.find(l => l !== homeUrl);
     
       if (firstDifferentLink) {
         try {
@@ -130,12 +135,17 @@ app.post('/screenshots', async (req, res) => {
           await sub.setViewport({ width: 1366, height: 768 });
           await sub.setUserAgent(await page.browser().userAgent());
           await sub.goto(firstDifferentLink, { waitUntil: 'networkidle2', timeout: 15000 });
-      
+    
           const filename = firstDifferentLink
             .replace(new URL(url).origin, '')
             .replace(/[\\/:"*?<>|]+/g, '_') || 'index';
-      
-          await sub.screenshot({ path: path.join(dirPath, `${filename}.png`), fullPage: false });
+    
+          await sub.screenshot({
+            path: path.join(dirPath, `${filename}.jpg`),
+            fullPage: false,
+            type: 'jpeg',
+            quality: 80
+          });
           await sub.close();
           gotShot = true;
         } catch {
@@ -144,8 +154,11 @@ app.post('/screenshots', async (req, res) => {
       } else {
         warnings.push('Farklı bir alt link bulunamadı.');
       }
-      
+    
+    } catch {
+      warnings.push('Linkler alınamadı (frame detach)');
     }
+    
 
     await page.close();
 
